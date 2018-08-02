@@ -8,6 +8,7 @@ import gym
 from gym import wrappers
 import argparse
 import pprint as pp
+from collections import deque
 
 from replay_buffer import ReplayBuffer
 
@@ -265,11 +266,14 @@ def train(sess, env, args, actor, critic, actor_noise):
     summary_ops, summary_vars = build_summaries()
 
     sess.run(tf.global_variables_initializer())
+
     writer = tf.summary.FileWriter(args['summary_dir'], sess.graph)
 
     # Initialize target network weights
     actor.update_target_network()
     critic.update_target_network()
+
+    saver = tf.train.Saver()
 
     # Initialize replay memory
     replay_buffer = ReplayBuffer(int(args['buffer_size']), int(args['random_seed']))
@@ -278,6 +282,8 @@ def train(sess, env, args, actor, critic, actor_noise):
     # This hurts the performance on Pendulum but could be useful
     # in other environments.
     # tflearn.is_training(True)
+
+    reward_mean = deque(maxlen=10)
 
     for i in range(int(args['max_episodes'])):
 
@@ -346,7 +352,13 @@ def train(sess, env, args, actor, critic, actor_noise):
 
                 print('| Reward: {:d} | Episode: {:d} | Qmax: {:.4f}'.format(int(ep_reward), \
                                                                              i, (ep_ave_max_q / float(j))))
+                reward_mean.append(ep_reward)
+
                 break
+
+            if int(sum(reward_mean)/10) < -200 :
+                saver.save(sess, 'model_save/ddpg/model.ckpt')
+
 
 
 def main(args):
@@ -408,7 +420,7 @@ if __name__ == '__main__':
     parser.add_argument('--monitor-dir', help='directory for storing gym results', default='./results/gym_ddpg')
     parser.add_argument('--summary-dir', help='directory for storing tensorboard info', default='./results/tf_ddpg')
 
-    parser.set_defaults(render_env=False)
+    parser.set_defaults(render_env=True)
     parser.set_defaults(use_gym_monitor=True)
 
     args = vars(parser.parse_args())
