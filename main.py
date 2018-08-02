@@ -5,10 +5,10 @@ Brought for study, and re-create to tensorflow-only version.
 import tensorflow as tf
 import numpy as np
 import gym
-from gym import wrappers
+from collections import deque
 import argparse
 import pprint as pp
-from collections import deque
+
 
 from replay_buffer import ReplayBuffer
 
@@ -25,12 +25,12 @@ class ActorNetwork(object):
         self.tau = tau
         self.batch_size = batch_size
 
-        # Actor Network
+        # Actor Network를 생성합니다.
         self.inputs, self.out, self.scaled_out = self.create_actor_network()
 
         self.network_params = tf.trainable_variables()
 
-        # Target Network
+        # Target Actor network를 생성합니다.
         self.target_inputs, self.target_out, self.target_scaled_out = self.create_actor_network()
 
         self.target_network_params = tf.trainable_variables()[
@@ -41,9 +41,11 @@ class ActorNetwork(object):
         self.update_target_network_params = \
             [self.target_network_params[i].assign(tf.multiply(self.network_params[i], self.tau) +
                                                   tf.multiply(self.target_network_params[i], 1. - self.tau))
+             #이부분을 알기 위해서는 tf.trainable_variables()의 반환값을 알고 .assing() 이 무엇을 뜻하는지 찾아야
+             #합니다.
              for i in range(len(self.target_network_params))]
 
-        # This gradient will be provided by the critic network
+        # critic network에게 제공받을 placeholder입니다. action의 gradient입니다.
         self.action_gradient = tf.placeholder(tf.float32, [None, self.a_dim])
 
         # Combine the gradients here
@@ -51,15 +53,16 @@ class ActorNetwork(object):
             self.scaled_out, self.network_params, -self.action_gradient)
         self.actor_gradients = list(map(lambda x: tf.div(x, self.batch_size), self.unnormalized_actor_gradients))
 
-        # Optimization Op
-        self.optimize = tf.train.AdamOptimizer(self.learning_rate). \
-            apply_gradients(zip(self.actor_gradients, self.network_params))
+        # 최적화 부분
+        self.optimize = \
+            tf.train.AdamOptimizer(self.learning_rate).apply_gradients(zip(self.actor_gradients, self.network_params))
 
-        self.num_trainable_vars = len(
-            self.network_params) + len(self.target_network_params)
+        #tf.trainable_variables()의 반환값이 무엇인지 먼저 알아야 한다.
+        self.num_trainable_vars = len(self.network_params) + len(self.target_network_params)
 
+    # Define actor neural network
     def create_actor_network(self):
-        #inputs = tflearn.input_data(shape=[None, self.s_dim])
+
         inputs = tf.placeholder(shape=[None, self.s_dim], dtype=tf.float32)
         w1 = tf.Variable(tf.random_normal(shape=[self.s_dim, 10], mean=0., stddev=0.1), name='w1')
         l1 = tf.matmul(inputs, w1)
@@ -80,25 +83,37 @@ class ActorNetwork(object):
         scaled_out = tf.multiply(out, self.action_bound)
         return inputs, out, scaled_out
 
+    # action의 gradient 와 inputs(state)를 입력으로 받아 self.optimize를 돌려서 학습합니다.
+    # Train by running self.optimize which gets the gradient of the action and inputs(state) as a inputs
     def train(self, inputs, a_gradient):
         self.sess.run(self.optimize, feed_dict={
             self.inputs: inputs,
             self.action_gradient: a_gradient
         })
 
+    # input을 받아 예측한 행동을 반환합니다.
+    # Choose and return the action of the actor network
+    # by getting input(state) as a input
     def predict(self, inputs):
         return self.sess.run(self.scaled_out, feed_dict={
             self.inputs: inputs
         })
 
+    # target network의 행동 예측값을 반환합니다.
+    # Choose and return the action of the target actor network
+    # by getting input(state) as a input
     def predict_target(self, inputs):
         return self.sess.run(self.target_scaled_out, feed_dict={
             self.target_inputs: inputs
         })
 
+    # target network를 self.update_target_network_params를 이용해 업데이트합니다.
+    # Update the target network by using self.update_target_network_params
     def update_target_network(self):
         self.sess.run(self.update_target_network_params)
 
+    # 정채불명
+    # Unconfirmed
     def get_num_trainable_vars(self):
         return self.num_trainable_vars
 
@@ -117,12 +132,12 @@ class CriticNetwork(object):
         self.tau = tau
         self.gamma = gamma
 
-        # Create the critic network
+        # critic network를 생성합니다.
         self.inputs, self.action, self.out = self.create_critic_network()
 
         self.network_params = tf.trainable_variables()[num_actor_vars:]
 
-        # Target Network
+        # Target critic network를 생성합니다.
         self.target_inputs, self.target_action, self.target_out = self.create_critic_network()
 
         self.target_network_params = tf.trainable_variables()[(len(self.network_params) + num_actor_vars):]
@@ -134,35 +149,24 @@ class CriticNetwork(object):
                                                   + tf.multiply(self.target_network_params[i], 1. - self.tau))
              for i in range(len(self.target_network_params))]
 
-        # Network target (y_i)
+        #target critic network에 y_i 값으로 제공될 placeholder입니다.
         self.predicted_q_value = tf.placeholder(tf.float32, [None, 1])
 
-        # Define loss and optimization Op
+        # loss를 정의하고 최적화합니다.
         #self.loss = tflearn.mean_square(self.predicted_q_value, self.out)
         self.loss = tf.reduce_mean(tf.square(self.predicted_q_value - self.out))
         self.optimize = tf.train.AdamOptimizer(
             self.learning_rate).minimize(self.loss)
 
-        # Get the gradient of the net w.r.t. the action.
-        # For each action in the minibatch (i.e., for each x in xs),
-        # this will sum up the gradients of each critic output in the minibatch
-        # w.r.t. that action. Each output is independent of all
-        # actions except for one.
+        # action에 대해서 신경망의 gradient를 구합니다.
+        # 미니배치의 각 critic 출력의 (각 액션에 의해서 구해진)기울기를 합산한다.
+        # 모든 출력은 자신이 나눠진 action을 제외한 모든 action에 대해 독립적이다.
         self.action_grads = tf.gradients(self.out, self.action)
 
+    # Critic network를 정의합니다.
+    # Define the critic network
     def create_critic_network(self):
-        """
-        inputs = tflearn.input_data(shape=[None, self.s_dim])
-        action = tflearn.input_data(shape=[None, self.a_dim])
-        net = tflearn.fully_connected(inputs, 400)
-        net = tflearn.layers.normalization.batch_normalization(net)
-        net = tflearn.activations.relu(net)
 
-        # Add the action tensor in the 2nd hidden layer
-        # Use two temp layers to get the corresponding weights and biases
-        t1 = tflearn.fully_connected(net, 300)
-        t2 = tflearn.fully_connected(action, 300)
-        """
         inputs = tf.placeholder(shape=[None, self.s_dim], dtype=tf.float32)
         action = tf.placeholder(shape=[None, self.a_dim], dtype=tf.float32)
 
@@ -179,7 +183,6 @@ class CriticNetwork(object):
 
         w_a = tf.Variable(tf.random_normal(shape=[self.a_dim, 6], mean=0, stddev=0.1), name='w_a')
 
-        #tw.2 를 w_a라는 이름으로 만드려고 했음. 모양은 a_dim, 300(?)
         l3_a = tf.matmul(action, w_a)
         l4 = tf.add(l3, l3_a)
         l4 = tf.nn.relu(l4)
@@ -217,8 +220,8 @@ class CriticNetwork(object):
         self.sess.run(self.update_target_network_params)
 
 
-# Taken from https://github.com/openai/baselines/blob/master/baselines/ddpg/noise.py, which is
-# based on http://math.stackexchange.com/questions/1287634/implementing-ornstein-uhlenbeck-in-matlab
+# https://github.com/openai/baselines/blob/master/baselines/ddpg/noise.py 에서 그대로 가지고 옴
+# Brought this class at https://github.com/openai/baselines/blob/master/baselines/ddpg/noise.py
 class OrnsteinUhlenbeckActionNoise:
     def __init__(self, mu, sigma=0.3, theta=.15, dt=1e-2, x0=None):
         self.theta = theta
@@ -278,11 +281,6 @@ def train(sess, env, args, actor, critic, actor_noise):
     # Initialize replay memory
     replay_buffer = ReplayBuffer(int(args['buffer_size']), int(args['random_seed']))
 
-    # Needed to enable BatchNorm.
-    # This hurts the performance on Pendulum but could be useful
-    # in other environments.
-    # tflearn.is_training(True)
-
     reward_mean = deque(maxlen=10)
 
     for i in range(int(args['max_episodes'])):
@@ -297,12 +295,12 @@ def train(sess, env, args, actor, critic, actor_noise):
             if args['render_env']:
                 env.render()
 
-            # Added exploration noise
-            # a = actor.predict(np.reshape(s, (1, 3))) + (1. / (1. + i))
+            # uo-process 노이즈 추가
             a = actor.predict(np.reshape(s, (1, actor.s_dim))) + actor_noise()
 
             s2, r, terminal, info = env.step(a[0])
 
+            #replay buffer에 추가
             replay_buffer.add(np.reshape(s, (actor.s_dim,)), np.reshape(a, (actor.a_dim,)), r,
                               terminal, np.reshape(s2, (actor.s_dim,)))
 
@@ -386,23 +384,16 @@ def main(args):
 
         actor_noise = OrnsteinUhlenbeckActionNoise(mu=np.zeros(action_dim))
 
-        if args['use_gym_monitor']:
-            if not args['render_env']:
-                env = wrappers.Monitor(
-                    env, args['monitor_dir'], video_callable=False, force=True)
-            else:
-                env = wrappers.Monitor(env, args['monitor_dir'], force=True)
-
         train(sess, env, args, actor, critic, actor_noise)
 
-        if args['use_gym_monitor']:
-            env.monitor.close()
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='provide arguments for DDPG agent')
 
-    # agent parameters
+
+    # print the parameters on the console
+    # and also offer the parametes to the main function
+    parser = argparse.ArgumentParser(description='provide arguments for DDPG agent')
     parser.add_argument('--actor-lr', help='actor network learning rate', default=0.0001)
     parser.add_argument('--critic-lr', help='critic network learning rate', default=0.001)
     parser.add_argument('--gamma', help='discount factor for critic updates', default=0.99)
@@ -416,12 +407,9 @@ if __name__ == '__main__':
     parser.add_argument('--max-episodes', help='max num of episodes to do while training', default=50000)
     parser.add_argument('--max-episode-len', help='max length of 1 episode', default=1000)
     parser.add_argument('--render-env', help='render the gym env', action='store_true')
-    parser.add_argument('--use-gym-monitor', help='record gym results', action='store_true')
-    parser.add_argument('--monitor-dir', help='directory for storing gym results', default='./results/gym_ddpg')
     parser.add_argument('--summary-dir', help='directory for storing tensorboard info', default='./results/tf_ddpg')
 
-    parser.set_defaults(render_env=True)
-    parser.set_defaults(use_gym_monitor=True)
+    parser.set_defaults(render_env=False)
 
     args = vars(parser.parse_args())
 
