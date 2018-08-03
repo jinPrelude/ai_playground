@@ -28,22 +28,26 @@ class ActorNetwork(object):
         # Actor Network를 생성합니다.
         self.inputs, self.out, self.scaled_out = self.create_actor_network()
 
+        # It stores the parameters the network has.
+        #
         self.network_params = tf.trainable_variables()
 
         # Target Actor network를 생성합니다.
         self.target_inputs, self.target_out, self.target_scaled_out = self.create_actor_network()
 
-        self.target_network_params = tf.trainable_variables()[
-                                     len(self.network_params):]
+        # It stores the parameters the target network has.
+        #self.target_network_params = tf.trainable_variables()[
+        #                             len(self.network_params):]
+
+        # Experimentally changed target_network_params. Original code is above.
+        self.target_network_params = tf.trainable_variables()
 
         # Op for periodically updating target network with online network
         # weights
+        # update_target_network_params = tau*t theta[i] + (1-tau) * target_theta[i]
         self.update_target_network_params = \
             [self.target_network_params[i].assign(tf.multiply(self.network_params[i], self.tau) +
-                                                  tf.multiply(self.target_network_params[i], 1. - self.tau))
-             #이부분을 알기 위해서는 tf.trainable_variables()의 반환값을 알고 .assing() 이 무엇을 뜻하는지 찾아야
-             #합니다.
-             for i in range(len(self.target_network_params))]
+                                                  tf.multiply(self.target_network_params[i], 1. - self.tau)) for i in range(len(self.target_network_params))]
 
         # critic network에게 제공받을 placeholder입니다. action의 gradient입니다.
         self.action_gradient = tf.placeholder(tf.float32, [None, self.a_dim])
