@@ -5,7 +5,7 @@ Brought for study, and re-create to tensorflow-only version.
 from collections import deque
 import random
 import numpy as np
-
+random.seed(1)
 class ReplayBuffer(object):
 
     def __init__(self, buffer_size, random_seed=123):
