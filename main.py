@@ -36,11 +36,11 @@ class ActorNetwork(object):
         self.target_inputs, self.target_out, self.target_scaled_out = self.create_actor_network()
 
         # It stores the parameters the target network has.
-        #self.target_network_params = tf.trainable_variables()[
-        #                             len(self.network_params):]
+        # We should slice the tf.trainable_variables() because unlike
+        # network_params target_actor_network is has made above.
+        self.target_network_params = tf.trainable_variables()[
+                                     len(self.network_params):]
 
-        # Experimentally changed target_network_params. Original code is above.
-        self.target_network_params = tf.trainable_variables()
 
         # Op for periodically updating target network with online network
         # weights
@@ -364,7 +364,7 @@ def train(sess, env, args, actor, critic, actor_noise):
 
         if i > 10  :
             if int(sum(reward_mean)/10) < -200 :
-                saver.save(sess, './model_save/ddpg/model.ckpt')
+                saver.save(sess, './results/model_save/model.ckpt')
 
 
 
