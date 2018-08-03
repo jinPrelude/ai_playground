@@ -54,6 +54,7 @@ class ActorNetwork(object):
         self.actor_gradients = list(map(lambda x: tf.div(x, self.batch_size), self.unnormalized_actor_gradients))
 
         # 최적화 부분
+        #optimization part
         self.optimize = \
             tf.train.AdamOptimizer(self.learning_rate).apply_gradients(zip(self.actor_gradients, self.network_params))
 
@@ -270,6 +271,7 @@ def train(sess, env, args, actor, critic, actor_noise):
 
     sess.run(tf.global_variables_initializer())
 
+    #generate tensorboard
     writer = tf.summary.FileWriter(args['summary_dir'], sess.graph)
 
     # Initialize target network weights
@@ -296,11 +298,13 @@ def train(sess, env, args, actor, critic, actor_noise):
                 env.render()
 
             # uo-process 노이즈 추가
+            # add uo-process noise
             a = actor.predict(np.reshape(s, (1, actor.s_dim))) + actor_noise()
 
             s2, r, terminal, info = env.step(a[0])
 
-            #replay buffer에 추가
+            # replay buffer에 추가
+            # Add to replay buffer
             replay_buffer.add(np.reshape(s, (actor.s_dim,)), np.reshape(a, (actor.a_dim,)), r,
                               terminal, np.reshape(s2, (actor.s_dim,)))
 
@@ -354,8 +358,9 @@ def train(sess, env, args, actor, critic, actor_noise):
 
                 break
 
+        if i > 10  :
             if int(sum(reward_mean)/10) < -200 :
-                saver.save(sess, 'model_save/ddpg/model.ckpt')
+                saver.save(sess, './model_save/ddpg/model.ckpt')
 
 
 
@@ -383,6 +388,8 @@ def main(args):
                                actor.get_num_trainable_vars())
 
         actor_noise = OrnsteinUhlenbeckActionNoise(mu=np.zeros(action_dim))
+
+
 
         train(sess, env, args, actor, critic, actor_noise)
 
