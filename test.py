@@ -72,12 +72,11 @@ class ActorNetwork(object):
             self.network_params) + len(self.target_network_params)
 
     def create_actor_network(self):
+
         inputs = tflearn.input_data(shape=[None, self.s_dim])
         net = tflearn.fully_connected(inputs, 400)
-        #net = tflearn.layers.normalization.batch_normalization(net)
         net = tflearn.activations.relu(net)
         net = tflearn.fully_connected(net, 300)
-        #net = tflearn.layers.normalization.batch_normalization(net)
         net = tflearn.activations.relu(net)
         # Final layer weights are init to Uniform[-3e-3, 3e-3]
         w_init = tflearn.initializations.uniform(minval=-0.003, maxval=0.003)
@@ -365,17 +364,7 @@ def main(args):
 
         actor_noise = OrnsteinUhlenbeckActionNoise(mu=np.zeros(action_dim))
 
-        if args['use_gym_monitor']:
-            if not args['render_env']:
-                env = wrappers.Monitor(
-                    env, args['monitor_dir'], video_callable=False, force=True)
-            else:
-                env = wrappers.Monitor(env, args['monitor_dir'], force=True)
-
         train(sess, env, args, actor, critic, actor_noise)
-
-        if args['use_gym_monitor']:
-            env.monitor.close()
 
 
 if __name__ == '__main__':
@@ -400,7 +389,6 @@ if __name__ == '__main__':
     parser.add_argument('--summary-dir', help='directory for storing tensorboard info', default='./results/tf_ddpg')
 
     parser.set_defaults(render_env=False)
-    parser.set_defaults(use_gym_monitor=True)
 
     args = vars(parser.parse_args())
 

@@ -8,6 +8,7 @@ import gym
 from collections import deque
 import argparse
 import pprint as pp
+import tflearn
 
 
 from replay_buffer import ReplayBuffer
@@ -87,6 +88,7 @@ class ActorNetwork(object):
         # Scale output to -action_bound to action_bound
         scaled_out = tf.multiply(out, self.action_bound)
         return inputs, out, scaled_out
+
 
     # action의 gradient 와 inputs(state)를 입력으로 받아 self.optimize를 돌려서 학습합니다.
     # Train by running self.optimize which gets the gradient of the action and inputs(state) as a inputs
@@ -171,30 +173,28 @@ class CriticNetwork(object):
     # Critic network를 정의합니다.
     # Define the critic network
     def create_critic_network(self):
-
         inputs = tf.placeholder(shape=[None, self.s_dim], dtype=tf.float32)
         action = tf.placeholder(shape=[None, self.a_dim], dtype=tf.float32)
 
-        w1 = tf.Variable(tf.random_normal(shape=[self.s_dim, 10], mean=0., stddev=0.1), name='w1')
-        l1 = tf.matmul(inputs, w1)
-        l1 = tf.nn.relu(l1)
+        #net = tflearn.fully_connected(inputs, 400)
+        # net = tflearn.layers.normalization.batch_normalization(net)
+        #net = tflearn.activations.relu(net)
+        w1 = tf.Variable(tf.random_normal(shape=[self.s_dim, 400], mean=0., stddev=.1), dtype=tf.float32)
+        net = tf.matmul(inputs, w1)
+        net = tf.nn.relu(net)
+        t1 = tf.Variable(tf.random_normal(shape=[400, 300], mean=0., stddev=.1), dtype=tf.float32)
+        t2 = tf.Variable(tf.random_normal(shape=[self.a_dim, 300], mean=0., stddev=.1), dtype=tf.float32)
+        net = tf.nn.relu(tf.matmul(net, t1) + tf.matmul(action, t2))
 
-        w2 = tf.Variable(tf.random_normal(shape=[10, 10], mean=0., stddev=0.1), name='w2')
-        l2 = tf.matmul(l1, w2)
-        l2 = tf.nn.relu(l2)
+        # linear layer connected to 1 output representing Q(s,a)
+        # Weights are init to Uniform[-3e-3, 3e-3]
+        w_init = tflearn.initializations.uniform(minval=-0.003, maxval=0.003)
+        w4 = tf.Variable(tf.random_normal(shape=[300, 1], mean=0., stddev= .1), dtype=tf.float32)
+        out = tf.matmul(net, w4)
+        #out = tflearn.fully_connected(net, 1, weights_init=w_init)
 
-        w3 = tf.Variable(tf.random_normal(shape=[10, 6], mean=0., stddev=0.1), name='w3')
-        l3 = tf.matmul(l2, w3)
-
-        w_a = tf.Variable(tf.random_normal(shape=[self.a_dim, 6], mean=0, stddev=0.1), name='w_a')
-
-        l3_a = tf.matmul(action, w_a)
-        l4 = tf.add(l3, l3_a)
-        l4 = tf.nn.relu(l4)
-
-        w4 = tf.Variable(tf.random_normal(shape=[6, 1], mean=0, stddev=0.1), dtype=tf.float32)
-        out = tf.matmul(l4, w4)
         return inputs, action, out
+
 
     def train(self, inputs, action, predicted_q_value):
         return self.sess.run([self.out, self.optimize], feed_dict={
