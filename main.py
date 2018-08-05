@@ -126,10 +126,6 @@ class ActorNetwork(object):
 
 
 class CriticNetwork(object):
-    """
-    Input to the network is the state and action, output is Q(s,a).
-    The action must be obtained from the output of the Actor network.
-    """
 
     def __init__(self, sess, state_dim, action_dim, learning_rate, tau, gamma, num_actor_vars):
         self.sess = sess
@@ -180,6 +176,9 @@ class CriticNetwork(object):
         l1 = tf.matmul(inputs, w1)
         l1 = tf.nn.relu(l1)
         w2 = tf.Variable(tf.random_uniform(shape=[400, 300], maxval=0.3, minval=-0.3), dtype=tf.float32)
+
+        # action에 가중치를 곱해서 critic network에 더해준다. 경험적으로 좋은 결과를 이끌어냈다고 함.
+
         w2_a = tf.Variable(tf.random_uniform(shape=[self.a_dim, 300],  maxval=0.3, minval=-0.3), dtype=tf.float32)
         l2 = tf.nn.relu(tf.matmul(l1, w2) + tf.matmul(action, w2_a))
 
