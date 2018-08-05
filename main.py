@@ -176,22 +176,16 @@ class CriticNetwork(object):
         inputs = tf.placeholder(shape=[None, self.s_dim], dtype=tf.float32)
         action = tf.placeholder(shape=[None, self.a_dim], dtype=tf.float32)
 
-        #net = tflearn.fully_connected(inputs, 400)
-        # net = tflearn.layers.normalization.batch_normalization(net)
-        #net = tflearn.activations.relu(net)
         w1 = tf.Variable(tf.random_uniform(shape=[self.s_dim, 400], maxval=0.3, minval=-0.3), dtype=tf.float32)
-        net = tf.matmul(inputs, w1)
-        net = tf.nn.relu(net)
-        t1 = tf.Variable(tf.random_uniform(shape=[400, 300], maxval=0.3, minval=-0.3), dtype=tf.float32)
-        t2 = tf.Variable(tf.random_uniform(shape=[self.a_dim, 300],  maxval=0.3, minval=-0.3), dtype=tf.float32)
-        net = tf.nn.relu(tf.matmul(net, t1) + tf.matmul(action, t2))
+        l1 = tf.matmul(inputs, w1)
+        l1 = tf.nn.relu(l1)
+        w2 = tf.Variable(tf.random_uniform(shape=[400, 300], maxval=0.3, minval=-0.3), dtype=tf.float32)
+        w2_a = tf.Variable(tf.random_uniform(shape=[self.a_dim, 300],  maxval=0.3, minval=-0.3), dtype=tf.float32)
+        l2 = tf.nn.relu(tf.matmul(l1, w2) + tf.matmul(action, w2_a))
 
-        # linear layer connected to 1 output representing Q(s,a)
-        # Weights are init to Uniform[-3e-3, 3e-3]
-        w_init = tflearn.initializations.uniform(minval=-0.003, maxval=0.003)
-        w4 = tf.Variable(tf.random_normal(shape=[300, 1], mean=0., stddev= .1), dtype=tf.float32)
-        out = tf.matmul(net, w4)
-        #out = tflearn.fully_connected(net, 1, weights_init=w_init)
+        w3 = tf.Variable(tf.random_uniform(shape=[300, 1], maxval=0.03, minval=-0.03), dtype=tf.float32)
+        out = tf.matmul(l2, w3)
+
 
         return inputs, action, out
 
