@@ -1,5 +1,8 @@
 # https://github.com/openai/baselines/blob/master/baselines/ddpg/noise.py 에서 그대로 가지고 옴
 # Brought this class at https://github.com/openai/baselines/blob/master/baselines/ddpg/noise.py
+
+import numpy as np
+
 class OrnsteinUhlenbeckActionNoise:
     def __init__(self, mu, sigma=0.3, theta=.15, dt=1e-2, x0=None):
         self.theta = theta
