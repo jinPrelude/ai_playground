@@ -51,8 +51,8 @@ class ActorNetwork(object):
         self.actor_gradients = list(map(lambda x: tf.div(x, self.batch_size), self.unnormalized_actor_gradients))
 
         # 최적화 부분
-        #optimization part
-        #actor_gradients 의 값을 Adam optimizer 을 이용해서 network_params에 변동사항을 적용하는 부분인듯. 그래서
+        # optimization part
+        # actor_gradients 의 값을 Adam optimizer 을 이용해서 network_params에 변동사항을 적용하는 부분인듯. 그래서
         # actor_gradients랑 network_params를 zip으로 묶어둔 듯 하다.
         self.optimize = \
             tf.train.AdamOptimizer(self.learning_rate).apply_gradients(zip(self.actor_gradients, self.network_params))
