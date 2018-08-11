@@ -33,6 +33,7 @@ class ActorNetwork(object):
         # Op for periodically updating target network with online network
         # weights
         # update_target_network_params = tau*t theta[i] + (1-tau) * target_theta[i]
+        # .assign은 assign() 괄호 안의 내용대로 변수의 값을 변경해주는 함수인듯
         self.update_target_network_params = \
             [self.target_network_params[i].assign(tf.multiply(self.network_params[i], self.tau) +
                                                   tf.multiply(self.target_network_params[i], 1. - self.tau)) for i in range(len(self.target_network_params))]
@@ -41,16 +42,22 @@ class ActorNetwork(object):
         self.action_gradient = tf.placeholder(tf.float32, [None, self.a_dim])
 
         # Combine the gradients here
+        # ys인 scaled_out을 xs인 network_params에 대해서 미분하고, y_grads인 -self.action_gradient를 곱해준다.
+        # y_grads 가 ys와 같은 독립변수를 포함하는 함수이면 placeholder에 따라 변경된 y_grads와 scaled_out이 곱해져서
+        # 편하다. self.action_gradient 가 음수인 이유는 gradient ascent 가 아닌 gradient descent를 해야 하기 때문이다.
         self.unnormalized_actor_gradients = tf.gradients(
             self.scaled_out, self.network_params, -self.action_gradient)
+
         self.actor_gradients = list(map(lambda x: tf.div(x, self.batch_size), self.unnormalized_actor_gradients))
 
         # 최적화 부분
         #optimization part
+        #actor_gradients 의 값을 Adam optimizer 을 이용해서 network_params에 변동사항을 적용하는 부분인듯. 그래서
+        # actor_gradients랑 network_params를 zip으로 묶어둔 듯 하다.
         self.optimize = \
             tf.train.AdamOptimizer(self.learning_rate).apply_gradients(zip(self.actor_gradients, self.network_params))
 
-        #tf.trainable_variables()의 반환값이 무엇인지 먼저 알아야 한다.
+        #훈련시킬 네트워크 파라메터가 몇 개인지 저장한다.
         self.num_trainable_vars = len(self.network_params) + len(self.target_network_params)
 
     # Define actor neural network
