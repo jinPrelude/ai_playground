@@ -6,24 +6,25 @@ import time
 
 #####################  hyper parameters  ####################
 
-MAX_EPISODES = 200
+MAX_EPISODES = 100000
 MAX_EP_STEPS = 100
 LR_A = 0.001    # learning rate for actor
 LR_C = 0.002    # learning rate for critic
 GAMMA = 0.9     # reward discount`
 TAU = 0.01      # soft replacement
-MEMORY_CAPACITY = 3000
+MEMORY_CAPACITY = 100000
+
 TRAIN_START = 300
-BATCH_SIZE = 128
+BATCH_SIZE = 256
 
 
 ###############################  DDPG  ####################################
 
 class DDPG(object):
-    def __init__(self, a_dim, s_dim, a_bound,):
+    def __init__(self, sess, a_dim, s_dim, a_bound,):
         self.memory = np.zeros((MEMORY_CAPACITY, s_dim * 2 + a_dim + 1), dtype=np.float32)
         self.pointer = 0
-        self.sess = tf.Session()
+        self.sess = sess
 
         self.a_dim, self.s_dim, self.a_bound = a_dim, s_dim, a_bound,
         self.S = tf.placeholder(tf.float32, [None, s_dim], 's')
@@ -57,7 +58,6 @@ class DDPG(object):
         a_loss = - tf.reduce_mean(q)    # maximize the q
         self.atrain = tf.train.AdamOptimizer(LR_A).minimize(a_loss, var_list=self.ae_params)
 
-        self.sess.run(tf.global_variables_initializer())
 
     def choose_action(self, s):
         s = np.asarray(s)
@@ -86,7 +86,10 @@ class DDPG(object):
     def _build_a(self, s, scope, trainable):
         with tf.variable_scope(scope):
             net = tf.layers.dense(s, 30, activation=tf.nn.relu, name='l1', trainable=trainable)
-            a = tf.layers.dense(net, self.a_dim, activation=tf.nn.sigmoid, name='a', trainable=trainable)
+            l2 = tf.layers.dense(net, 20, activation=tf.nn.relu, name='l2', trainable=trainable)
+            l3 = tf.layers.dense(l2, 10, activation=tf.nn.relu, name='l3', trainable=trainable)
+            a = tf.layers.dense(l3, self.a_dim, activation=tf.nn.sigmoid, name='a', trainable=trainable)
+
             return a
 
     def _build_c(self, s, a, scope, trainable):
@@ -94,48 +97,65 @@ class DDPG(object):
             n_l1 = 30
             w1_s = tf.get_variable('w1_s', [self.s_dim, n_l1], trainable=trainable)
             w1_a = tf.get_variable('w1_a', [self.a_dim, n_l1], trainable=trainable)
-            b1 = tf.get_variable('b1', [1, n_l1], trainable=trainable)
-            net = tf.nn.relu(tf.matmul(s, w1_s) + tf.matmul(a, w1_a) + b1)
-            return tf.layers.dense(net, 1, trainable=trainable)  # Q(s,a)
+            merge = tf.matmul(s, w1_s) + tf.matmul(a, w1_a)
+            c_l1 = tf.layers.dense(merge, 30, activation=tf.nn.relu, name='c_l1', trainable=trainable)
+            c_l2 = tf.layers.dense(c_l1, 20, activation=tf.nn.relu, name='c_l2', trainable=trainable)
+            c_l3 = tf.layers.dense(c_l2, 10, activation=tf.nn.relu, name='c_l3', trainable=trainable)
+            return tf.layers.dense(c_l3, 1, trainable=trainable)  # Q(s,a)
 
 
 ###############################  training  ####################################
+def main() :
 
-env = hover_v1(sas = True, max_altitude=300, max_step=MAX_EP_STEPS)
+    with tf.Session() as sess :
+        env = hover_v1(sas = True, max_altitude=300, max_step=MAX_EP_STEPS)
+
+        s_dim = env.observation_space
+        a_dim = env.action_space
+        a_bound = env.action_max
+
+        ddpg = DDPG(sess, a_dim, s_dim, a_bound)
+
+        sess.run(tf.global_variables_initializer())
+
+        saver = tf.train.Saver(max_to_keep=1000)
+
+        writer = tf.summary.FileWriter('./results/tensorboard/', sess.graph)
+        writer.flush()
+
+        var = 3  # control exploration
+        for i in range(MAX_EPISODES):
+            s = env.reset()
+            ep_reward = 0
+            for j in range(MAX_EP_STEPS+1):
 
 
-s_dim = env.observation_space
-a_dim = env.action_space
-a_bound = env.action_max
+                # Add exploration noise
+                a = ddpg.choose_action(s)
+                a = np.clip(np.random.normal(a, var), 0., 1.)   # add randomness to action selection for exploration
+                s_, r, done = env.step(a)
 
-ddpg = DDPG(a_dim, s_dim, a_bound)
-
-var = 3  # control exploration
-t1 = time.time()
-for i in range(MAX_EPISODES):
-    s = env.reset()
-    ep_reward = 0
-    for j in range(MAX_EP_STEPS+1):
+                ddpg.store_transition(s, a, r / 10, s_)
 
 
-        # Add exploration noise
-        a = ddpg.choose_action(s)
-        a = np.clip(np.random.normal(a, var), 0., 1.)   # add randomness to action selection for exploration
-        s_, r, done = env.step(a)
+                s = s_
+                ep_reward += r
 
-        ddpg.store_transition(s, a, r / 10, s_)
+                if j == MAX_EP_STEPS:
+                    print('Episode:', i, ' Reward: %i' % int(ep_reward), 'Explore: %.2f' % var, )
+                    # if ep_reward > -300:RENDER = True
+                    break
+            if i % 100 == 0:
+                saver.save(sess, './results/model_save/model_%d' % i)
 
+            if ddpg.pointer > TRAIN_START:
+                print('training')
+                t = time.time()
+                var *= .99  # decay the action randomness
+                ddpg.learn()
+                print('training time : ', time.time() - t)
 
-        s = s_
-        ep_reward += r
-        if j == MAX_EP_STEPS:
-            print('Episode:', i, ' Reward: %i' % int(ep_reward), 'Explore: %.2f' % var, )
-            # if ep_reward > -300:RENDER = True
-            break
+        #print('Running time: ', time.time() - t1)
 
-    if ddpg.pointer > TRAIN_START:
-        print('training')
-        var *= .999  # decay the action randomness
-        ddpg.learn()
-
-print('Running time: ', time.time() - t1)
+if __name__ == "__main__" :
+    main()
