@@ -14,8 +14,8 @@ GAMMA = 0.9     # reward discount`
 TAU = 0.01      # soft replacement
 MEMORY_CAPACITY = 100000
 
-TRAIN_START = 300
-BATCH_SIZE = 256
+TRAIN_START = 1200
+BATCH_SIZE = 1024
 
 
 ###############################  DDPG  ####################################
@@ -86,9 +86,10 @@ class DDPG(object):
     def _build_a(self, s, scope, trainable):
         with tf.variable_scope(scope):
             net = tf.layers.dense(s, 30, activation=tf.nn.relu, name='l1', trainable=trainable)
-            l2 = tf.layers.dense(net, 20, activation=tf.nn.relu, name='l2', trainable=trainable)
-            l3 = tf.layers.dense(l2, 10, activation=tf.nn.relu, name='l3', trainable=trainable)
-            a = tf.layers.dense(l3, self.a_dim, activation=tf.nn.sigmoid, name='a', trainable=trainable)
+            l2 = tf.layers.dense(net, 40, activation=tf.nn.relu, name='l2', trainable=trainable)
+            l3 = tf.layers.dense(l2, 20, activation=tf.nn.relu, name='l3', trainable=trainable)
+            l4 = tf.layers.dense(l3, 10, activation=tf.nn.relu, name='l4', trainable=trainable)
+            a = tf.layers.dense(l4, self.a_dim, activation=tf.nn.sigmoid, name='a', trainable=trainable)
 
             return a
 
@@ -99,9 +100,10 @@ class DDPG(object):
             w1_a = tf.get_variable('w1_a', [self.a_dim, n_l1], trainable=trainable)
             merge = tf.matmul(s, w1_s) + tf.matmul(a, w1_a)
             c_l1 = tf.layers.dense(merge, 30, activation=tf.nn.relu, name='c_l1', trainable=trainable)
-            c_l2 = tf.layers.dense(c_l1, 20, activation=tf.nn.relu, name='c_l2', trainable=trainable)
-            c_l3 = tf.layers.dense(c_l2, 10, activation=tf.nn.relu, name='c_l3', trainable=trainable)
-            return tf.layers.dense(c_l3, 1, trainable=trainable)  # Q(s,a)
+            c_l2 = tf.layers.dense(c_l1, 40, activation=tf.nn.relu, name='c_l2', trainable=trainable)
+            c_l3 = tf.layers.dense(c_l2, 20, activation=tf.nn.relu, name='c_l3', trainable=trainable)
+            c_l4 = tf.layers.dense(c_l3, 10, activation=tf.nn.relu, name='c_l4', trainable=trainable)
+            return tf.layers.dense(c_l4, 1, trainable=trainable)  # Q(s,a)
 
 
 ###############################  training  ####################################
@@ -110,7 +112,7 @@ def main() :
     with tf.Session() as sess :
         env = hover_v1(sas = True, max_altitude=300, max_step=MAX_EP_STEPS)
 
-        s_dim = env.observation_space
+        s_dim = env.observation_space + 1 # Add last thrust
         a_dim = env.action_space
         a_bound = env.action_max
 
@@ -127,23 +129,27 @@ def main() :
         for i in range(MAX_EPISODES):
             s = env.reset()
             ep_reward = 0
+            last_thrust = env.initial_throttle
+
+            # Add exploration noise
+            s = np.append(s, last_thrust)
             for j in range(MAX_EP_STEPS+1):
 
-
-                # Add exploration noise
                 a = ddpg.choose_action(s)
                 a = np.clip(np.random.normal(a, var), 0., 1.)   # add randomness to action selection for exploration
                 s_, r, done = env.step(a)
+                s_ = np.append(s_, a)
 
                 ddpg.store_transition(s, a, r / 10, s_)
 
 
                 s = s_
-                ep_reward += r
+                ep_reward += r/100
+                last_thrust = a
 
                 if j == MAX_EP_STEPS:
                     print('Episode:', i, ' Reward: %i' % int(ep_reward), 'Explore: %.2f' % var, )
-                    # if ep_reward > -300:RENDER = True
+                    print()
                     break
             if i % 100 == 0:
                 saver.save(sess, './results/model_save/model_%d' % i)
@@ -151,7 +157,7 @@ def main() :
             if ddpg.pointer > TRAIN_START:
                 print('training')
                 t = time.time()
-                var *= .99  # decay the action randomness
+                var *= .998  # decay the action randomness
                 ddpg.learn()
                 print('training time : ', time.time() - t)
 
