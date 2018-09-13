@@ -114,7 +114,10 @@ class hover_v1:
             self.conn.space_center.quickload()
         else :
             self.step_count += 1
-            self.reward = -abs(self.vessel.flight().mean_altitude - self.target_altitude)
+            altitude_error = abs(self.vessel.flight().mean_altitude - self.target_altitude)
+            self.reward = -(altitude_error+(altitude_error * self.vessel.flight().speed))/self.max_step
+            if self.vessel.flight().mean_altitude > self.max_altitude :
+                self.reward = -100.
         time.sleep(0.08)
         return (self.vessel.thrust, self.vessel.mass, self.target_altitude, self.vessel.flight().mean_altitude), self.reward, self.done
 

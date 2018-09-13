@@ -122,6 +122,8 @@ def main() :
 
         saver = tf.train.Saver(max_to_keep=1000)
 
+        #saver.restore(sess, './results/model_save/model_700')
+
         writer = tf.summary.FileWriter('./results/tensorboard/', sess.graph)
         writer.flush()
 
@@ -144,20 +146,20 @@ def main() :
 
 
                 s = s_
-                ep_reward += r/100
+                ep_reward += r
                 last_thrust = a
 
                 if j == MAX_EP_STEPS:
                     print('Episode:', i, ' Reward: %i' % int(ep_reward), 'Explore: %.2f' % var, )
                     print()
                     break
-            if i % 100 == 0:
-                saver.save(sess, './results/model_save/model_%d' % i)
+            if i % 50 == 0:
+                saver.save(sess, './results/model_save/model_%d'%i)
 
             if ddpg.pointer > TRAIN_START:
                 print('training')
                 t = time.time()
-                var *= .998  # decay the action randomness
+                var *= .995  # decay the action randomness
                 ddpg.learn()
                 print('training time : ', time.time() - t)
 
