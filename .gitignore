@@ -1,5 +1,3 @@
 
-*.xml
-*.pyc
 *.iml
-results/*
+*.xml
